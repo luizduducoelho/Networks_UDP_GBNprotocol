@@ -144,7 +144,7 @@ int main(int argc, char **argv){
 	int write_n;
 	int N = 3;
 	int seqnum_recebido = 1;
-	int expected_seqnum = 1;
+	int expected_seqnum = 2;
 	char seqnum_pkg[4] = { 0 };
 
 	// INICIALIZANDO TP SOCKET
@@ -220,27 +220,47 @@ int main(int argc, char **argv){
 	fflush(arq);
 
 	// RECEBE OS DADOS POR GoBackN
-	total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server); // Esperando seq = 1
-	if (total_recebido > 0){
-		seqnum_recebido = extract_seqnum(buffer);
-		sum_recebido = extract_checksum(buffer);
-		extract_packet(buffer, seqnum_recebido, dados, total_recebido);
-		sum = checksum(dados, total_recebido-tam_cabecalho);
-		printf("Buffer recebido: %s \n", buffer);
-		printf("seqnum_recebido %d \n", seqnum_recebido);
-		if (sum != sum_recebido){
-			printf("Received a modified package \n");
-		}
-		if ((seqnum_recebido == 0) && (sum == sum_recebido)){
-			tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda seq = 1
-			timeouts = 0;
-		}
-	}
-	else{
-		sent = tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda ACK = 1
-		timeouts++;
-	}
 
+	do {
+		do {
+
+			total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server); // Esperando seq = 2
+			if (total_recebido > 0){
+				seqnum_recebido = extract_seqnum(buffer);
+				sum_recebido = extract_checksum(buffer);
+				extract_packet(buffer, seqnum_recebido, dados, total_recebido);
+				sum = checksum(dados, total_recebido-tam_cabecalho);
+				printf("Buffer recebido: %s \n", buffer);
+				printf("seqnum_recebido %d \n", seqnum_recebido);
+				if (sum != sum_recebido){
+					printf("Received a modified package \n");
+				}
+				if ((seqnum_recebido == expected_seqnum) && (sum == sum_recebido)){
+					create_seqnum_pkg(2, seqnum_pkg);
+					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); 
+					timeouts = 0;
+				}
+			}
+			else{
+				timeouts++;
+			}
+			create_seqnum_pkg(2, seqnum_pkg); // Manda seq = 2
+			tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+
+		}while(((total_recebido == -1) || (seqnum_recebido != expected_seqnum) || (sum != sum_recebido)) && timeouts<=max_timeouts);
+		expected_seqnum += 1;
+
+		fflush(arq);
+		write_n = bytes_to_write(total_recebido, tam_cabecalho);
+		total_gravado = fwrite(dados, 1, write_n, arq);
+		tam_arquivo += total_gravado;
+		if ((total_gravado != total_recebido-tam_cabecalho) && (total_recebido-tam_cabecalho > 0)){
+			printf("Erro na escrita do arquivo.\n");
+			exit(1);
+		}
+		memset(dados, 0, tam_dados);
+
+	}while((total_recebido != tam_cabecalho) && timeouts<=max_timeouts);
 
 	//FECHA O ARQUIVO
 	fclose(arq);

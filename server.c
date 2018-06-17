@@ -93,9 +93,9 @@ int main(int argc, char * argv[]){
 	char sum_recebido = '\0';
 	int seqnum = 0;
 	int seqnum_recebido;
-	int N = 3;
+	int N = 1;
 	int base = 1;
-	int next_seqnum = 1;
+	int next_seqnum = 2;
 
 	// INICIALIZANDO TP SOCKET
 	tp_init();
@@ -167,11 +167,10 @@ int main(int argc, char * argv[]){
 
 	//ROTINA GoBakN - LOOP PRINCIPAL
 	total_lido = fread(dados, 1, tam_dados, arq);
+	next_seqnum = 2;
 	sum = checksum(dados, total_lido);
 	if (next_seqnum < base + N){
-		printf("Before create_packet \n");
 		create_packet(next_seqnum, sum, dados, buffer, total_lido);
-		printf("Before send_packet \n");
 		tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 0
 	}
 
