@@ -10,21 +10,49 @@ void error(const char *msg){
 	exit(1);
 }
 
-void create_packet(char* akc, char* dados, char checksum, char* packet){
-	strcpy(packet, akc);
-	packet[1] = checksum;
-	strcat(packet, dados);
+void create_packet(int seqnum, char checksum, char* dados, char* packet){
+	unsigned char seqnum_bytes[4];
+	seqnum_bytes[3] = (seqnum >> 24) & 0xFF;
+	seqnum_bytes[2] = (seqnum >> 16) & 0xFF;
+	seqnum_bytes[1] = (seqnum >> 8) & 0xFF;
+	seqnum_bytes[0] = seqnum & 0xFF;
+	memmove(packet, seqnum_bytes, 4);
+
+	packet[4] = checksum;
+
+	//strcat(packet, dados);
+	memmove(packet+5, dados, 9);
+	printf("Building packet %s \n", packet);
+
+	char new_nome[10];
+	memmove(new_nome, packet+5, 10);
+	printf("Checksum %c \n", packet[4]);
+	printf("Nome enviado: %s \n", new_nome);
+
 }
 
-void extract_packet(char* packet, char* ack, char* dados, int total_recebido ){
-	strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
-	ack[1] = '\0';
-	memmove(dados, packet+2, total_recebido-2);
+void create_seqnum_pkg(int seqnum, char *seqnum_pkg){
+	unsigned char seqnum_bytes[4];
+	seqnum_bytes[3] = (seqnum >> 24) & 0xFF;
+	seqnum_bytes[2] = (seqnum >> 16) & 0xFF;
+	seqnum_bytes[1] = (seqnum >> 8) & 0xFF;
+	seqnum_bytes[0] = seqnum & 0xFF;
+
+	memmove(seqnum_pkg, seqnum_bytes, 4);
 }
 
-void extract_ack(char* packet, char* ack){
-	strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
-	ack[1] = '\0';
+void extract_packet(char* packet, int seqnum_recebido, char* dados, int total_recebido ){
+	//strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
+	//seqnum_recebido =  packet[0];
+	//ack[1] = '\0';
+	memmove(dados, packet+5, total_recebido-5);
+}
+
+int extract_seqnum(char* packet){
+	unsigned char seqnum_bytes[4];
+	memmove(seqnum_bytes, packet, 4);
+
+	return *(int*)seqnum_bytes;
 }
 
 void toggle_ack(char *ack){
@@ -64,7 +92,7 @@ char checksum(char* s, int total_lido ){
 }
 
 char extract_checksum(char* packet){
-	return packet[1];
+	return packet[4];
 }
 
 int main(int argc, char **argv){
@@ -102,6 +130,23 @@ int main(int argc, char **argv){
 	printf("Nome do arquivo: %s, %zu, %zu\n", nome_do_arquivo, sizeof(nome_do_arquivo), strlen(nome_do_arquivo));
 	printf("Tamanho do buffer: %d\n", tam_buffer);
 
+	// Inicializa Variaveis
+	int seqnum = 0;
+	int tam_cabecalho = 5;
+	int tam_dados = tam_buffer-tam_cabecalho;
+	char *dados = calloc(tam_dados, sizeof (*dados));
+	int total_gravado; //recebe o numero em bytes do que foi gravado no arquivo em cada iteracao
+	int tam_arquivo = 0; 
+	char ack_esperado[] = "0";
+	char ack_recebido[2] = { 0 };
+	int max_timeouts = 10;
+	int timeouts = 0;
+	int write_n;
+	int N = 3;
+	int seqnum_recebido = 1;
+	int expected_seqnum = 1;
+	char seqnum_pkg[4] = { 0 };
+
 	// INICIALIZANDO TP SOCKET
 	tp_init();
 
@@ -131,7 +176,9 @@ int main(int argc, char **argv){
 	char sum = '\0';
 	char sum_recebido = '\0';
 	sum = checksum(nome_do_arquivo, strlen(nome_do_arquivo));
-	create_packet(ack, nome_do_arquivo, sum, nome_do_arquivo_pkg);
+
+	create_packet(seqnum, sum, nome_do_arquivo, nome_do_arquivo_pkg);
+	printf("Pacote com nome do arquivo %s \n", nome_do_arquivo_pkg);
 	
 	// REALIZA TEMPORIZACAO ESPARA 1S
 	struct timeval tv;
@@ -148,14 +195,19 @@ int main(int argc, char **argv){
 	char *buffer = calloc(tam_buffer, sizeof (*buffer));
 	do {
 		//printf("Envia nome_do_arquivo ......\n");
-		tp_sendto(udp_socket, nome_do_arquivo_pkg, strlen(nome_do_arquivo_pkg)+1, &server);
-		total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server);  // Esperando ACK = 0
-	}while ((total_recebido == -1) || buffer[0] != '0');
-	//printf("OK, server recebeu o nome do arquivo !\n");
+		printf("Checksum %c, in package %c \n", sum, nome_do_arquivo_pkg[4]);
+		printf("Nome do arquivo, strlen, %s, %zu \n", nome_do_arquivo, strlen(nome_do_arquivo));
+		tp_sendto(udp_socket, nome_do_arquivo_pkg, strlen(nome_do_arquivo)+tam_cabecalho+1, &server);
+		total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server);  // Esperando seqnum = 0
+		seqnum_recebido = extract_seqnum(buffer);
+		printf("seqnum_recebido %d \n", seqnum_recebido);
+	}while ((total_recebido == -1) || seqnum_recebido != 0);
+	printf("OK, server recebeu o nome do arquivo !\n");
 
 	// CONFIRMA INICIO DA CONEXÃO
-	strcpy(ack, "1");
-	tp_sendto(udp_socket, ack, sizeof(ack), &server); // Manda ACK = 1
+	seqnum = 1;
+    create_seqnum_pkg(seqnum, seqnum_pkg);
+	tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seqnum = 1
 
 	//ABRE UM ARQUIVO PARA SALVAR OS DADOS RECEBIDOS
 	//printf("Nome do arquivo: %s \n", nome_do_arquivo);
@@ -167,97 +219,38 @@ int main(int argc, char **argv){
 	}
 	fflush(arq);
 
-	// RECEBE OS DADOS POR STOP AND WAIT
-	int tam_cabecalho = 2;
-	int tam_dados = tam_buffer-tam_cabecalho;
-	char *dados = calloc(tam_dados, sizeof (*dados));
-	int total_gravado; //recebe o numero em bytes do que foi gravado no arquivo em cada iteracao
-	int tam_arquivo = 0; 
-	char ack_esperado[] = "0";
-	char ack_recebido[2] = { 0 };
-	int max_timeouts = 10;
-	int timeouts = 0;
-	int write_n;
-
-	// LOOP PRINCIPAL
-	do {
-		if (strcmp(ack_esperado, "0") == 0){
-			do{
-				total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server);  // Esperando ACK = 0
-				if (total_recebido > 0){
-					extract_ack(buffer, ack_recebido);
-					sum_recebido = extract_checksum(buffer);
-					extract_packet(buffer, ack_recebido, dados, total_recebido);
-					sum = checksum(dados, total_recebido-tam_cabecalho);
-				
-					if (sum != sum_recebido){
-						printf("Received a modified package \n");
-					}
-					if ((strcmp(ack_recebido, "0") == 0) && (sum == sum_recebido)){
-						tp_sendto(udp_socket, "0", sizeof("0"), &server); // Manda ACK = 0
-						timeouts = 0;
-					}
-				}
-				else{
-					sent = tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda ACK = 1
-					timeouts++;
-				}
-
-			}while(((total_recebido == -1) || (strcmp(ack_recebido, "0") != 0) || (sum != sum_recebido)) && timeouts<=max_timeouts);
+	// RECEBE OS DADOS POR GoBackN
+	total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server); // Esperando seq = 1
+	if (total_recebido > 0){
+		seqnum_recebido = extract_seqnum(buffer);
+		sum_recebido = extract_checksum(buffer);
+		extract_packet(buffer, seqnum_recebido, dados, total_recebido);
+		sum = checksum(dados, total_recebido-tam_cabecalho);
+		printf("Buffer recebido: %s \n", buffer);
+		printf("seqnum_recebido %d \n", seqnum_recebido);
+		if (sum != sum_recebido){
+			printf("Received a modified package \n");
 		}
-
-		else if(strcmp(ack_esperado, "1") == 0){
-			do{
-				total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server);  // Esperando ACK = 1
-				if (total_recebido > 0){
-						extract_ack(buffer, ack_recebido);
-						sum_recebido = extract_checksum(buffer);
-						extract_packet(buffer, ack_recebido, dados, total_recebido);
-						sum = checksum(dados, total_recebido-tam_cabecalho);
-					
-					if (sum != sum_recebido){
-						printf("Received a modified package \n");
-					}
-					if ( (strcmp(ack_recebido, "1") == 0) && (sum == sum_recebido) ){
-						tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda ACK = 1
-					}
-				}
-				else{
-					sent = tp_sendto(udp_socket, "0", sizeof("0"), &server); // Manda ACK = 0
-					timeouts++;
-				}
-				}while(((total_recebido == -1) || (strcmp(ack_recebido, "1") != 0) || (sum != sum_recebido)) &&  timeouts<=max_timeouts);
+		if ((seqnum_recebido == 0) && (sum == sum_recebido)){
+			tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda seq = 1
+			timeouts = 0;
 		}
+	}
+	else{
+		sent = tp_sendto(udp_socket, "1", sizeof("1"), &server); // Manda ACK = 1
+		timeouts++;
+	}
 
-		extract_packet(buffer, ack_recebido, dados, total_recebido);
-		fflush(arq);
-		write_n = bytes_to_write(total_recebido, tam_cabecalho);
-		total_gravado = fwrite(dados, 1, write_n, arq);
-		tam_arquivo += total_gravado;
-		printf("total_gravado: %d, total_recebido-tam_cabecalho: %d \n", total_gravado, total_recebido-tam_cabecalho);
-
-		if ((total_gravado != total_recebido-tam_cabecalho) && (total_recebido-tam_cabecalho > 0)){
-			printf("Erro na escrita do arquivo.\n");
-			exit(1);
-		}
-		memset(dados, 0, tam_dados);
-		toggle_ack(ack_esperado);
-
-	}while((total_recebido != tam_cabecalho) && timeouts<=max_timeouts);
-
-	// IMPRIMINDO MENSAGENS FINAIS 
-	printf("Foram recebidos, %d bytes!! \n", tam_arquivo);
-	printf("Numero de timeouts: %d \n\n", timeouts);
 
 	//FECHA O ARQUIVO
 	fclose(arq);
 	gettimeofday(&t2, 0);	
-	int tempo = (t2.tv_sec - t1.tv_sec) * 1000; //s para ms
+	float tempo = (t2.tv_sec - t1.tv_sec) * 1000; //s para ms
 	tempo += (t2.tv_usec - t1.tv_usec) / 1000; 
 	float taxa = tam_arquivo/tempo;
 
 	// LIBERA OS PONTEIROS ALOCADOS
-	printf("Buffer = %i byte(s), %fkbps (%i bytes em %i ms) \n", tam_buffer, taxa, tam_arquivo, tempo);
+	printf("Buffer = %i byte(s), %fkbps (%i bytes em %f ms) \n", tam_buffer, taxa, tam_arquivo, tempo);
 	free(nome_do_arquivo_pkg);
 	free(nome_do_arquivo);
 	free(nome_do_servidor);

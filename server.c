@@ -10,22 +10,47 @@ void error(const char *msg){
 	exit(1);
 }
 
-void create_packet(char* akc, char* dados, char checksum, char* packet, int total_lido){
-	strncpy(packet, akc, 1);
-	packet[1] = checksum;
-	memmove(packet+2, dados, total_lido);
+void create_packet(int seqnum, char checksum, char* dados, char* packet, int total_lido){
+	unsigned char seqnum_bytes[4];
+	seqnum_bytes[3] = (seqnum >> 24) & 0xFF;
+	seqnum_bytes[2] = (seqnum >> 16) & 0xFF;
+	seqnum_bytes[1] = (seqnum >> 8) & 0xFF;
+	seqnum_bytes[0] = seqnum & 0xFF;
+	memmove(packet, seqnum_bytes, 4);
+
+	packet[4] = checksum;
+
+	memmove(packet+5, dados, total_lido);
 }
 
-void extract_packet(char* packet, char* ack, char checksum, char* dados ){
-	strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
-	ack[1] = '\0';
-	memmove(dados, packet+2, strlen(packet)-1);
+void create_seqnum_pkg(int seqnum, char *seqnum_pkg){
+	unsigned char seqnum_bytes[4];
+	seqnum_bytes[3] = (seqnum >> 24) & 0xFF;
+	seqnum_bytes[2] = (seqnum >> 16) & 0xFF;
+	seqnum_bytes[1] = (seqnum >> 8) & 0xFF;
+	seqnum_bytes[0] = seqnum & 0xFF;
+
+	memmove(seqnum_pkg, seqnum_bytes, 4);
+}
+
+int extract_packet(char* packet, char checksum, char* dados, int count ){
+	unsigned char seqnum_bytes[4];
+	memmove(seqnum_bytes, packet, 4);
+
+	//checksum = &(packet[4]);
+
+	memmove(dados, packet+5, count-5+1);//strlen(packet)-4);
+	printf("Dados em extract %s \n", dados);
+
+	return *(int*)seqnum_bytes;
 
 }
 
-void extract_ack(char* packet, char* ack){
-	strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
-	ack[1] = '\0';
+int extract_seqnum(char* packet){
+	unsigned char seqnum_bytes[4];
+	memmove(seqnum_bytes, packet, 4);
+
+	return *(int*)seqnum_bytes;
 }
 
 char checksum(char* s, int total_lido ){
@@ -42,7 +67,7 @@ char checksum(char* s, int total_lido ){
 }
 
 char extract_checksum(char* packet){
-	return packet[1];
+	return packet[4];
 }
 
 int main(int argc, char * argv[]){
@@ -57,6 +82,20 @@ int main(int argc, char * argv[]){
 
 	printf("Porta do servidor: %d\n", portno);
 	printf("Tamanho do buffer: %d\n", tam_buffer);
+
+	//INICIALIZA VARIAVEIS
+	so_addr cliente;  // FROM
+	char nome_do_arquivo[256] = { 0 };
+	char pacote_com_nome[256] = { 0 };
+	char ack_recebido[2] = { 0 };
+	int count;
+	char sum = '\0';
+	char sum_recebido = '\0';
+	int seqnum = 0;
+	int seqnum_recebido;
+	int N = 3;
+	int base = 1;
+	int next_seqnum = 1;
 
 	// INICIALIZANDO TP SOCKET
 	tp_init();
@@ -74,15 +113,6 @@ int main(int argc, char * argv[]){
 		error("Falha de bind \n");
 	}
 
-	// FROM
-	so_addr cliente; 
-	char nome_do_arquivo[256] = { 0 };
-	char pacote_com_nome[256] = { 0 };
-	char ack_recebido[2] = { 0 };
-	int count;
-	char sum = '\0';
-	char sum_recebido = '\0';
-
 	// INICIALIZA TEMPORIZACAO
 	struct timeval tv;
 	tv.tv_sec = 1;
@@ -95,28 +125,34 @@ int main(int argc, char * argv[]){
 	do {
 		count = tp_recvfrom(udp_socket, pacote_com_nome, sizeof(nome_do_arquivo), &cliente);
 		if (count > 0){
+			printf("Recebidos %d bytesssssss \n", count);
 			//extrai a substring com o nome do arquivo, sem o ACK
+			printf("Pacote com nome %s \n", pacote_com_nome);
 			sum_recebido = extract_checksum(pacote_com_nome);
-			extract_packet(pacote_com_nome, ack_recebido, sum_recebido, nome_do_arquivo);
+			seqnum_recebido = extract_packet(pacote_com_nome, sum_recebido, nome_do_arquivo, count);
 			printf("Nome recebido: %s \n", nome_do_arquivo);
+			printf("seqnum_recebido : %d \n", seqnum_recebido);
+			printf("sum recebido %c \n", sum_recebido);
 			sum = checksum(nome_do_arquivo, strlen(nome_do_arquivo));
+			printf("Chacksum recebido %c, checkum calculado %c, iguais %d \n", sum_recebido, sum, sum != sum_recebido);
 		}
 
 	}while((count == -1) || (sum != sum_recebido));
 
 	// AGUARDANDO ACK DO NOME DO ARQUIVO
-	int tam_cabecalho = 2;
+	int tam_cabecalho = 5;
 	char *buffer = calloc(tam_buffer, sizeof (*buffer));
-	char ack[] = "0";
+	char seqnum_pkg[4] = { 0 };
+	create_seqnum_pkg(seqnum, seqnum_pkg);
 	do {
-		tp_sendto(udp_socket, ack, sizeof(ack), &cliente); // Manda ACK = 0
-		count = tp_recvfrom(udp_socket, buffer, sizeof(buffer), &cliente);  // Esperando 1
-		extract_ack(buffer, ack_recebido);
+		tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); // seqnum = 0
+		count = tp_recvfrom(udp_socket, buffer, sizeof(buffer), &cliente);  // Esperando  seqnum = 1
+		seqnum_recebido = extract_seqnum(buffer);
 
-	}while ((count == -1) || (strcmp(ack_recebido, "1") != 0) ); 
+	}while ((count == -1) || (seqnum_recebido != 1) ); 
 	count = -1;
 	// Exibe mensagem
-	//printf("Cliente confirmou inicio da conexao! Comecaremos a enviar dados\n");
+	printf("Cliente confirmou inicio da conexao! Comecaremos a enviar dados\n");
 
 	// ABRE O ARQUIVO
 	FILE *arq;
@@ -129,39 +165,15 @@ int main(int argc, char * argv[]){
 	int tam_dados = tam_buffer-tam_cabecalho;
 	char *dados = calloc(tam_dados, sizeof (*dados));
 
-	//ROTINA STOP-AND-WAIT - LOOP PRINCIPAL
-	do{
-		total_lido = fread(dados, 1, tam_dados, arq);
-		sum = checksum(dados, total_lido);
-
-		if(ack[0]=='0'){
-			do {
-				create_packet(ack, dados, sum, buffer, total_lido);
-				tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 0
-				count = tp_recvfrom(udp_socket, ack_recebido, sizeof(ack_recebido), &cliente);  // Espera ACK = 0
-				// Do something better here 
-			}while ((count == -1) || (strcmp(ack_recebido, "0") != 0));
-			memset(ack, 0, 1);
-			strcpy(ack,"1");
-			count = -1;
-			}
-		else if(ack[0]=='1'){
-			do {
-				create_packet(ack, dados, sum, buffer, total_lido);
-				//printf("Enviando um buffer: %s, sizeof: %zu, strlen: %zu \n", buffer, sizeof(buffer), strlen(buffer));
-				tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 1
-				count = tp_recvfrom(udp_socket, ack_recebido, sizeof(ack_recebido), &cliente);  // Espera ACK = 1
-			}while ((count == -1) || (strcmp(ack_recebido, "1") != 0));
-			memset(ack, 0, 1);
-			strcpy(ack,"0");
-			count = -1;
-			}
-		memset(buffer, 0, tam_buffer);
-		memset(dados, 0, tam_dados);
-		memset(ack_recebido, 0, 1);
-	}while(total_lido != 0);
-
-	printf("Arquivo enviado totalmente \n\n");
+	//ROTINA GoBakN - LOOP PRINCIPAL
+	total_lido = fread(dados, 1, tam_dados, arq);
+	sum = checksum(dados, total_lido);
+	if (next_seqnum < base + N){
+		printf("Before create_packet \n");
+		create_packet(next_seqnum, sum, dados, buffer, total_lido);
+		printf("Before send_packet \n");
+		tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 0
+	}
 
 	//FECHA O ARQUIVO
 	fclose(arq);
