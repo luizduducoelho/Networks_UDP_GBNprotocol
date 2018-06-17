@@ -143,16 +143,16 @@ int main(int argc, char * argv[]){
 	}while((count == -1) || (sum != sum_recebido));
 
 	// AGUARDANDO ACK DO NOME DO ARQUIVO
-	create_seqnum_pkg(seqnum, seqnum_pkg);
-	do {
-		tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); // seqnum = 0
-		count = tp_recvfrom(udp_socket, buffer, sizeof(buffer), &cliente);  // Esperando  seqnum = 1
-		seqnum_recebido = extract_seqnum(buffer);
+	//create_seqnum_pkg(seqnum, seqnum_pkg);
+	//do {
+	//	//tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); // seqnum = 0
+	//	count = tp_recvfrom(udp_socket, buffer, sizeof(buffer), &cliente);  // Esperando  seqnum = 1
+	//	seqnum_recebido = extract_seqnum(buffer);
 
-	}while ((count == -1) || (seqnum_recebido != 1) ); 
-	count = -1;
+	//}while ((count == -1) || (seqnum_recebido != 1) ); 
+	//count = -1;
 	// Exibe mensagem
-	printf("Cliente confirmou inicio da conexao! Comecaremos a enviar dados\n");
+	//printf("Cliente confirmou inicio da conexao! Comecaremos a enviar dados\n");
 
 	// ABRE O ARQUIVO
 	FILE *arq;
@@ -169,17 +169,20 @@ int main(int argc, char * argv[]){
 	do {
 		total_lido = fread(dados, 1, tam_dados, arq);
 		sum = checksum(dados, total_lido);
-		if (next_seqnum < base + N){
-			create_packet(base, sum, dados, buffer, total_lido);
-		}
-		next_seqnum ++;
 
 		do {
-		tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 0
-		count = tp_recvfrom(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); 
-		seqnum_recebido = extract_seqnum(seqnum_pkg);
-		base = seqnum_recebido + 1;
-		} while(base != next_seqnum);
+			create_packet(base, sum, dados, buffer, total_lido);
+			tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); 
+			printf("Enviado seqnum %d \n", base);
+			count = tp_recvfrom(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); 
+			if (count > 0){
+				seqnum_recebido = extract_seqnum(seqnum_pkg);
+				printf("Recebido seqnum %d \n", seqnum_recebido);
+				base = seqnum_recebido + 1;
+				printf("Base, %d next_seqnum %d \n", base, next_seqnum);
+			}
+		} while(base == next_seqnum);
+		next_seqnum ++;
 
 		memset(buffer, 0, tam_buffer);
 		memset(dados, 0, tam_dados);

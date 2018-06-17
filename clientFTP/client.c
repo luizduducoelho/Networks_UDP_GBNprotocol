@@ -201,7 +201,7 @@ int main(int argc, char **argv){
 		total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server);  // Esperando seqnum = 0
 		seqnum_recebido = extract_seqnum(buffer);
 		printf("seqnum_recebido %d \n", seqnum_recebido);
-	}while ((total_recebido == -1) || seqnum_recebido != 0);
+	}while ((total_recebido == -1) || seqnum_recebido != 2);
 	printf("OK, server recebeu o nome do arquivo !\n");
 
 	// CONFIRMA INICIO DA CONEXÃO
@@ -225,26 +225,38 @@ int main(int argc, char **argv){
 
 			total_recebido = tp_recvfrom(udp_socket, buffer, tam_buffer, &server); // Esperando seq = 2
 			if (total_recebido > 0){
+				//printf("Antes de seqnum_recebido \n");
 				seqnum_recebido = extract_seqnum(buffer);
-				sum_recebido = extract_checksum(buffer);
-				extract_packet(buffer, seqnum_recebido, dados, total_recebido);
-				sum = checksum(dados, total_recebido-tam_cabecalho);
-				printf("Buffer recebido: %s \n", buffer);
-				printf("seqnum_recebido %d \n", seqnum_recebido);
-				if (sum != sum_recebido){
-					printf("Received a modified package \n");
+				printf("Antes de  sum_recebido\n");
+				if (total_recebido > 4){
+					sum_recebido = extract_checksum(buffer);
+					//printf("Antes de extract_packet\n");
+					extract_packet(buffer, seqnum_recebido, dados, total_recebido);
+					//printf("Antes de  sum\n");
+					sum = checksum(dados, total_recebido-tam_cabecalho);
+					printf("Buffer recebido: %s \n", buffer);
+					printf("seqnum_recebido %d \n", seqnum_recebido);
+					printf("seqnum_esperado %d \n", expected_seqnum);
+					if (sum != sum_recebido){
+						printf("Received a modified package \n");
+					}
 				}
 				if ((seqnum_recebido == expected_seqnum) && (sum == sum_recebido)){
-					create_seqnum_pkg(2, seqnum_pkg);
-					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); 
+					create_seqnum_pkg(seqnum_recebido, seqnum_pkg); // Cria seq
+					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
 					timeouts = 0;
 				}
-			}
+				else{
+					create_seqnum_pkg(seqnum_recebido, seqnum_pkg); // Cria seq
+					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+					timeouts++;
+				}
+			}	
 			else{
 				timeouts++;
 			}
-			create_seqnum_pkg(expected_seqnum, seqnum_pkg); // Manda seq = 2
-			tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+			//create_seqnum_pkg(seqnum_recebido, seqnum_pkg); // Cria seq
+			//tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
 
 		}while(((total_recebido == -1) || (seqnum_recebido != expected_seqnum) || (sum != sum_recebido)) && timeouts<=max_timeouts);
 		expected_seqnum += 1;
@@ -258,9 +270,11 @@ int main(int argc, char **argv){
 			exit(1);
 		}
 		memset(dados, 0, tam_dados);
+		memset(seqnum_pkg, 0, 4);
 
 	}while((total_recebido != tam_cabecalho) && timeouts<=max_timeouts);
 
+	printf("Tivemos %d timeouts!!\n", timeouts);
 	//FECHA O ARQUIVO
 	fclose(arq);
 	gettimeofday(&t2, 0);	
