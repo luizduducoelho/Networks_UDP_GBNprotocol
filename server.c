@@ -94,8 +94,11 @@ int main(int argc, char * argv[]){
 	int seqnum = 0;
 	int seqnum_recebido;
 	int N = 1;
-	int base = 1;
+	int base = 2;
 	int next_seqnum = 2;
+	char seqnum_pkg[4] = { 0 };
+	int tam_cabecalho = 5;
+	char *buffer = calloc(tam_buffer, sizeof (*buffer));
 
 	// INICIALIZANDO TP SOCKET
 	tp_init();
@@ -140,9 +143,6 @@ int main(int argc, char * argv[]){
 	}while((count == -1) || (sum != sum_recebido));
 
 	// AGUARDANDO ACK DO NOME DO ARQUIVO
-	int tam_cabecalho = 5;
-	char *buffer = calloc(tam_buffer, sizeof (*buffer));
-	char seqnum_pkg[4] = { 0 };
 	create_seqnum_pkg(seqnum, seqnum_pkg);
 	do {
 		tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); // seqnum = 0
@@ -166,13 +166,25 @@ int main(int argc, char * argv[]){
 	char *dados = calloc(tam_dados, sizeof (*dados));
 
 	//ROTINA GoBakN - LOOP PRINCIPAL
-	total_lido = fread(dados, 1, tam_dados, arq);
-	next_seqnum = 2;
-	sum = checksum(dados, total_lido);
-	if (next_seqnum < base + N){
-		create_packet(next_seqnum, sum, dados, buffer, total_lido);
+	do {
+		total_lido = fread(dados, 1, tam_dados, arq);
+		sum = checksum(dados, total_lido);
+		if (next_seqnum < base + N){
+			create_packet(base, sum, dados, buffer, total_lido);
+		}
+		next_seqnum ++;
+
+		do {
 		tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); // Manda pacote de dados 0
-	}
+		count = tp_recvfrom(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); 
+		seqnum_recebido = extract_seqnum(seqnum_pkg);
+		base = seqnum_recebido + 1;
+		} while(base != next_seqnum);
+
+		memset(buffer, 0, tam_buffer);
+		memset(dados, 0, tam_dados);
+		memset(seqnum_pkg, 0, 4);
+	}while(total_lido != 0);
 
 	//FECHA O ARQUIVO
 	fclose(arq);

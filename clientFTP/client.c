@@ -220,7 +220,6 @@ int main(int argc, char **argv){
 	fflush(arq);
 
 	// RECEBE OS DADOS POR GoBackN
-
 	do {
 		do {
 
@@ -244,7 +243,7 @@ int main(int argc, char **argv){
 			else{
 				timeouts++;
 			}
-			create_seqnum_pkg(2, seqnum_pkg); // Manda seq = 2
+			create_seqnum_pkg(expected_seqnum, seqnum_pkg); // Manda seq = 2
 			tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
 
 		}while(((total_recebido == -1) || (seqnum_recebido != expected_seqnum) || (sum != sum_recebido)) && timeouts<=max_timeouts);
