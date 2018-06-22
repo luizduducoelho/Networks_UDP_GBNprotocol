@@ -171,6 +171,7 @@ int main(int argc, char * argv[]){
 		sum = checksum(dados, total_lido);
 
 		do {
+			printf("checksum envaido:%c\n", sum);
 			create_packet(base, sum, dados, buffer, total_lido);
 			tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); 
 			printf("Enviado seqnum %d \n", base);
@@ -180,6 +181,7 @@ int main(int argc, char * argv[]){
 				printf("Recebido seqnum %d \n", seqnum_recebido);
 				sum_recebido = extract_checksum(seqnum_pkg);
 				sum = checksum(seqnum_pkg, 4);
+				printf("dados:%s", seqnum_pkg);
 				printf("checksum_recebido:%c\nchecksum calculado:%c\n%d\n", sum_recebido, sum, sum_recebido==sum);
 				if(sum == sum_recebido){
 					printf("seq recebido:%d",seqnum_recebido);
@@ -203,3 +205,4 @@ int main(int argc, char * argv[]){
 
 	return 0;
 }
+
