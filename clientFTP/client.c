@@ -40,7 +40,9 @@ char checksum(char* s, int total_lido ){
 		sum += *s;
 		s++;
 		i++;
+		//printf("Calculate checksum Iter %d\n", i);
 	}
+	//printf("Sum before return %c\n", sum);
 	return sum;
 }
 
@@ -105,9 +107,9 @@ char extract_checksum(char* packet){
 
 int main(int argc, char **argv){
 	// PROCESSANDO ARGUMENTOS DA LINHA DE COMANDO
-	if(argc < 5){	
+	if(argc < 6){	
 		fprintf(stderr , "Parametros faltando \n");
-		printf("Formato: [host_do_servidor], [porta_do_servidor], [nome_do_arquivo], [tamanho_buffer] \n");
+		printf("Formato: [host_do_servidor], [porta_do_servidor], [nome_do_arquivo], [tamanho_buffer], [tam_janela] \n");
 		exit(1);
 	}
 
@@ -116,6 +118,7 @@ int main(int argc, char **argv){
 	int porta_do_servidor;
 	porta_do_servidor = atoi(argv[2]);
 	size_t filename_len = strlen(argv[3]) + 1;
+	int tam_janela = atoi(argv[5]);
 	char *nome_do_servidor = calloc(host_len, sizeof (*nome_do_servidor));
 	char *nome_do_arquivo = calloc(filename_len, sizeof (*nome_do_arquivo));
 	int tam_buffer = atoi(argv[4]);
@@ -147,7 +150,7 @@ int main(int argc, char **argv){
 	int tam_arquivo = 0; 
 	char ack_esperado[] = "0";
 	char ack_recebido[2] = { 0 };
-	int max_timeouts = 10;
+	int max_timeouts = 1000;
 	int timeouts = 0;
 	int write_n;
 	int N = 3;
@@ -200,7 +203,7 @@ int main(int argc, char **argv){
 	char *buffer = calloc(tam_buffer, sizeof (*buffer));
 	do {
 		//printf("Envia nome_do_arquivo ......\n");
-		printf("Checksum %c, in package %c \n", sum, nome_do_arquivo_pkg[4]);
+		//printf("Checksum %c, in package %c \n", sum, nome_do_arquivo_pkg[4]);
 		printf("Nome do arquivo, strlen, %s, %zu \n", nome_do_arquivo, strlen(nome_do_arquivo));
 		create_packet(seqnum, sum, nome_do_arquivo, nome_do_arquivo_pkg);
 		tp_sendto(udp_socket, nome_do_arquivo_pkg, strlen(nome_do_arquivo)+tam_cabecalho+1, &server);
@@ -233,30 +236,34 @@ int main(int argc, char **argv){
 			if (total_recebido > 0){
 				//printf("Antes de seqnum_recebido \n");
 				seqnum_recebido = extract_seqnum(buffer);
-				printf("Antes de  sum_recebido\n");
-				if (total_recebido > 4){
-					sum_recebido = extract_checksum(buffer);
-					//printf("Antes de extract_packet\n");
-					extract_packet(buffer, seqnum_recebido, dados, total_recebido);
-					//printf("Antes de  sum\n");
-					sum = checksum(dados, total_recebido-tam_cabecalho);
-					printf("checksum:%c\n", sum);
-					printf("Buffer recebido: %s \n", buffer);
-					printf("seqnum_recebido %d \n", seqnum_recebido);
-					printf("seqnum_esperado %d \n", expected_seqnum);
-					printf("checksum recebido:%c, checksum claculado:%c\n", sum_recebido, sum);
-					if (sum != sum_recebido){
-						printf("Received a modified package \n");
-					}
+				printf("seqnum_recebido %d \n", seqnum_recebido);
+				printf("seqnum_esperado %d \n", expected_seqnum);
+				//printf("Antes de  sum_recebido\n");
+				sum_recebido = extract_checksum(buffer);
+				//printf("Antes de extract_packet\n");
+				extract_packet(buffer, seqnum_recebido, dados, total_recebido);
+				//printf("Antes de  sum\n");
+				//printf("DADOS %s \n", dados);
+				sum = checksum(dados, total_recebido-tam_cabecalho);
+				//printf("checksum after return:%c\n", sum);
+				//printf("Buffer recebido: %s \n", buffer);
+				//printf("seqnum_recebido %d \n", seqnum_recebido);
+				//printf("seqnum_esperado %d \n", expected_seqnum);
+				//printf("checksum recebido:%c, checksum claculado:%c\n", sum_recebido, sum);
+				if (sum != sum_recebido){
+					printf("Received a modified package \n");
 				}
 				if ((seqnum_recebido == expected_seqnum) && (sum == sum_recebido)){
 					create_seqnum_pkg(seqnum_recebido, seqnum_pkg); // Cria seq
 					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+					printf("Seqnum enviado %d \n", seqnum_recebido);
 					timeouts = 0;
 				}
 				else{
+					memset(seqnum_pkg, 0, 4);
 					create_seqnum_pkg(expected_seqnum-1, seqnum_pkg); // Cria seq
 					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+					printf("Seqnum enviado %d \n", expected_seqnum-1);
 					//memset(seqnum_pkg, 0, 4);
 					timeouts++;
 				}
@@ -268,6 +275,8 @@ int main(int argc, char **argv){
 			//tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
 
 		}while(((total_recebido == -1) || (seqnum_recebido != expected_seqnum) || (sum != sum_recebido)) && timeouts<=max_timeouts);
+		printf("\n\n\n OK tudo certo incrementamos expected \n");
+		printf("seqnum_recebido %d == seqnum_esperado %d    sum %c == sum_recebido %c \n\n\n",seqnum_recebido, expected_seqnum, sum, sum_recebido );
 		expected_seqnum += 1;
 
 		fflush(arq);
@@ -301,3 +310,4 @@ int main(int argc, char **argv){
 
 	return 0;
 }
+
