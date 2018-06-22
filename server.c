@@ -11,6 +11,9 @@ void error(const char *msg){
 }
 
 void create_packet(int seqnum, char checksum, char* dados, char* packet, int total_lido){
+	memset(packet, 0, total_lido+5);
+
+
 	unsigned char seqnum_bytes[4];
 	seqnum_bytes[3] = (seqnum >> 24) & 0xFF;
 	seqnum_bytes[2] = (seqnum >> 16) & 0xFF;
@@ -74,12 +77,12 @@ int main(int argc, char * argv[]){
 	// PROCESSANDO ARGUMENTOS DA LINHA DE COMANDO
 	if(argc < 3){	
 		fprintf(stderr , "Parametros faltando \n");
-		printf("Formato: [porta_do_servidor], [tamanho_buffer] \n");
+		printf("Formato: [porta_do_servidor], [tamanho_buffer], [tam_janela] \n");
 		exit(1);
 	}
 	int portno = atoi(argv[1]);
 	int tam_buffer = atoi(argv[2]);
-
+	int tam_janela = atoi(argv[3]);
 	printf("Porta do servidor: %d\n", portno);
 	printf("Tamanho do buffer: %d\n", tam_buffer);
 
@@ -171,23 +174,32 @@ int main(int argc, char * argv[]){
 		sum = checksum(dados, total_lido);
 
 		do {
-			printf("checksum envaido:%c\n", sum);
+			sum = checksum(dados, total_lido);
+			//printf("checksum envaido:%c\n", sum);
+			memset(buffer, 0, tam_buffer);
+			memset(seqnum_pkg, 0, 4);
 			create_packet(base, sum, dados, buffer, total_lido);
 			tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); 
 			printf("Enviado seqnum %d \n", base);
+			//printf("Buffer: %s\n", buffer);
 			count = tp_recvfrom(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); 
 			if (count > 0){
 				seqnum_recebido = extract_seqnum(seqnum_pkg);
 				printf("Recebido seqnum %d \n", seqnum_recebido);
 				sum_recebido = extract_checksum(seqnum_pkg);
 				sum = checksum(seqnum_pkg, 4);
-				printf("dados:%s", seqnum_pkg);
-				printf("checksum_recebido:%c\nchecksum calculado:%c\n%d\n", sum_recebido, sum, sum_recebido==sum);
+				//printf("dados:%s", seqnum_pkg);
+				//printf("checksum_recebido:%c\nchecksum calculado:%c\n%d\n", sum_recebido, sum, sum_recebido==sum);
 				if(sum == sum_recebido){
-					printf("seq recebido:%d",seqnum_recebido);
+					//printf("seq recebido:%d",seqnum_recebido);
 					base = seqnum_recebido + 1;
 					printf("Base, %d next_seqnum %d \n", base, next_seqnum);
 				}
+			}
+			else{
+				//tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente);
+				//printf("Enviado seqnum %d \n", base);
+				printf("Estamos no else !!!\n");
 			}
 		} while(base == next_seqnum);
 		next_seqnum ++;
@@ -205,4 +217,3 @@ int main(int argc, char * argv[]){
 
 	return 0;
 }
-
