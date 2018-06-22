@@ -64,6 +64,7 @@ void extract_packet(char* packet, int seqnum_recebido, char* dados, int total_re
 	//strncpy(ack, packet, 1);  // Esteja ciente que strncpy nao finaliza com '/0'
 	//seqnum_recebido =  packet[0];
 	//ack[1] = '\0';
+	memset(dados, 0, total_recebido-5);
 	memmove(dados, packet+5, total_recebido-5);
 }
 
@@ -150,8 +151,8 @@ int main(int argc, char **argv){
 	int timeouts = 0;
 	int write_n;
 	int N = 3;
-	int seqnum_recebido = 1;
-	int expected_seqnum = 2;
+	int seqnum_recebido = 0;
+	int expected_seqnum = 1;
 	char seqnum_pkg[5] = { 0 };
 
 	// INICIALIZANDO TP SOCKET
@@ -210,9 +211,9 @@ int main(int argc, char **argv){
 	printf("OK, server recebeu o nome do arquivo !\n");
 
 	// CONFIRMA INICIO DA CONEXÃO
-	seqnum = 1;
-    create_seqnum_pkg(seqnum, seqnum_pkg);
-	tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seqnum = 1
+	//seqnum = 1;
+    //create_seqnum_pkg(seqnum, seqnum_pkg);
+	//tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seqnum = 1
 
 	//ABRE UM ARQUIVO PARA SALVAR OS DADOS RECEBIDOS
 	//printf("Nome do arquivo: %s \n", nome_do_arquivo);
@@ -243,6 +244,7 @@ int main(int argc, char **argv){
 					printf("Buffer recebido: %s \n", buffer);
 					printf("seqnum_recebido %d \n", seqnum_recebido);
 					printf("seqnum_esperado %d \n", expected_seqnum);
+					printf("checksum recebido:%c, checksum claculado:%c\n", sum_recebido, sum);
 					if (sum != sum_recebido){
 						printf("Received a modified package \n");
 					}
@@ -255,6 +257,7 @@ int main(int argc, char **argv){
 				else{
 					create_seqnum_pkg(expected_seqnum-1, seqnum_pkg); // Cria seq
 					tp_sendto(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &server); // Manda seq = 2
+					//memset(seqnum_pkg, 0, 4);
 					timeouts++;
 				}
 			}	
@@ -298,4 +301,3 @@ int main(int argc, char **argv){
 
 	return 0;
 }
-
