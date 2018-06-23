@@ -75,7 +75,7 @@ char extract_checksum(char* packet){
 
 int main(int argc, char * argv[]){
 	// PROCESSANDO ARGUMENTOS DA LINHA DE COMANDO
-	if(argc < 3){	
+	if(argc < 4){	
 		fprintf(stderr , "Parametros faltando \n");
 		printf("Formato: [porta_do_servidor], [tamanho_buffer], [tam_janela] \n");
 		exit(1);
@@ -131,16 +131,16 @@ int main(int argc, char * argv[]){
 	do {
 		count = tp_recvfrom(udp_socket, pacote_com_nome, sizeof(nome_do_arquivo), &cliente);
 		if (count > 0){
-			printf("Recebidos %d bytesssssss \n", count);
+			//printf("Recebidos %d bytesssssss \n", count);
 			//extrai a substring com o nome do arquivo, sem o ACK
-			printf("Pacote com nome %s \n", pacote_com_nome);
+			//printf("Pacote com nome %s \n", pacote_com_nome);
 			sum_recebido = extract_checksum(pacote_com_nome);
 			seqnum_recebido = extract_packet(pacote_com_nome, sum_recebido, nome_do_arquivo, count);
 			printf("Nome recebido: %s \n", nome_do_arquivo);
-			printf("seqnum_recebido : %d \n", seqnum_recebido);
-			printf("sum recebido %c \n", sum_recebido);
+			//printf("seqnum_recebido : %d \n", seqnum_recebido);
+			//printf("sum recebido %c \n", sum_recebido);
 			sum = checksum(nome_do_arquivo, strlen(nome_do_arquivo));
-			printf("Chacksum recebido %c, checkum calculado %c, iguais %d \n", sum_recebido, sum, sum != sum_recebido);
+			//printf("Chacksum recebido %c, checkum calculado %c, iguais %d \n", sum_recebido, sum, sum != sum_recebido);
 		}
 
 	}while((count == -1) || (sum != sum_recebido));
@@ -180,12 +180,12 @@ int main(int argc, char * argv[]){
 			memset(seqnum_pkg, 0, 4);
 			create_packet(base, sum, dados, buffer, total_lido);
 			tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente); 
-			printf("Enviado seqnum %d \n", base);
+			//printf("Enviado seqnum %d \n", base);
 			//printf("Buffer: %s\n", buffer);
 			count = tp_recvfrom(udp_socket, seqnum_pkg, sizeof(seqnum_pkg), &cliente); 
 			if (count > 0){
 				seqnum_recebido = extract_seqnum(seqnum_pkg);
-				printf("Recebido seqnum %d \n", seqnum_recebido);
+				//printf("Recebido seqnum %d \n", seqnum_recebido);
 				sum_recebido = extract_checksum(seqnum_pkg);
 				sum = checksum(seqnum_pkg, 4);
 				//printf("dados:%s", seqnum_pkg);
@@ -193,14 +193,14 @@ int main(int argc, char * argv[]){
 				if(sum == sum_recebido){
 					//printf("seq recebido:%d",seqnum_recebido);
 					base = seqnum_recebido + 1;
-					printf("Base, %d next_seqnum %d \n", base, next_seqnum);
+					//printf("Base, %d next_seqnum %d \n", base, next_seqnum);
 				}
 			}
-			else{
+			//else{
 				//tp_sendto(udp_socket, buffer, total_lido + tam_cabecalho, &cliente);
 				//printf("Enviado seqnum %d \n", base);
-				printf("Estamos no else !!!\n");
-			}
+				//printf("Estamos no else !!!\n");
+			//}
 		} while(base == next_seqnum);
 		next_seqnum ++;
 		memset(buffer, 0, tam_buffer);
